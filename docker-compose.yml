@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  frontend:
+    container_name: frontend
+    image: frontend
+    build:
+      context: ./frontend
+      args:
+      - REACT_APP_SERVER_URL=127.0.0.1:8000
+      dockerfile: Dockerfile  
+    ports:
+      - 8080:8080
+  fastapi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fastapi_app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://postgres:mypgdbpass@postgres:5432/app_db
+    volumes:
+      - .:/app
+
+  postgres:
+    image: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypgdbpass
+      POSTGRES_DB: app_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: always
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@pgadmin.com
+      PGADMIN_DEFAULT_PASSWORD: mypgadminpass
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+  redis:
+    image: redis:alpine
+    container_name: redis_broker
+    ports:
+      - "6379:6379"
+
+  celery:
+    build:
+      context: ./backend 
+      dockerfile: Dockerfile 
+    container_name: celery_worker
+    command: celery --app=tasks.app worker --concurrency=1 --loglevel=info
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379
+      - CELERY_RESULT_BACKEND=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:mypgdbpass@postgres:5432/app_db
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
